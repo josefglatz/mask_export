@@ -1,29 +1,23 @@
 <?php
-namespace CPSIT\MaskExport\Aggregate;
 
-/***************************************************************
- *  Copyright notice
+declare(strict_types=1);
+
+namespace IchHabRecht\MaskExport\Aggregate;
+
+/*
+ * This file is part of the TYPO3 extension mask_export.
  *
- *  (c) 2016 Nicole Cordes <typo3@cordes.co>, CPS-IT GmbH
+ * (c) 2016 Nicole Cordes <typo3@cordes.co>, CPS-IT GmbH
  *
- *  All rights reserved
+ * It is free software; you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License, either version 2
+ * of the License, or any later version.
  *
- *  This script is part of the TYPO3 project. The TYPO3 project is
- *  free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  The GNU General Public License can be found at
- *  http://www.gnu.org/copyleft/gpl.html.
- *
- *  This script is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  This copyright notice MUST APPEAR in all copies of the script!
- ***************************************************************/
+ * For the full copyright and license information, please read the
+ * LICENSE file that was distributed with this source code.
+ */
+
+use TYPO3\CMS\Core\Utility\ArrayUtility;
 
 class TtContentOverridesAggregate extends AbstractOverridesAggregate
 {
@@ -76,13 +70,15 @@ class TtContentOverridesAggregate extends AbstractOverridesAggregate
         );
         $this->appendPhpFile(
             $this->tcaOverridesFilePath . $this->table . '.php',
-<<<EOS
-\$GLOBALS['TCA']['{$this->table}']['columns']['CType']['config']['items'][] = array(
+            <<<EOS
+\$GLOBALS['TCA']['{$this->table}']['columns']['CType']['config']['items'][] = [
     'LLL:EXT:mask/{$this->languageFilePath}{$this->languageFileIdentifier}:{$this->table}.CType.div._mask_',
     '--div--',
-);
+];
 
 EOS
+            ,
+            PhpAwareInterface::PHPFILE_DEFINED_TYPO3_MODE | PhpAwareInterface::PHPFILE_CLOSURE_FUNCTION
         );
         foreach ($newTypeFields as $type => $_) {
             $this->addLabel(
@@ -92,25 +88,29 @@ EOS
             );
             $this->appendPhpFile(
                 $this->tcaOverridesFilePath . $this->table . '.php',
-<<<EOS
-\$GLOBALS['TCA']['{$this->table}']['columns']['CType']['config']['items'][] = array(
+                <<<EOS
+\$GLOBALS['TCA']['{$this->table}']['columns']['CType']['config']['items'][] = [
     'LLL:EXT:mask/{$this->languageFilePath}{$this->languageFileIdentifier}:{$this->table}.CType.{$type}',
     '{$type}',
     'tx_{$type}',
-);
+];
 
 EOS
+                ,
+                PhpAwareInterface::PHPFILE_DEFINED_TYPO3_MODE | PhpAwareInterface::PHPFILE_CLOSURE_FUNCTION
             );
         }
 
-        $tempTypes = var_export($newTypeFields, true);
+        $tempTypes = ArrayUtility::arrayExport($newTypeFields);
         $this->appendPhpFile(
             $this->tcaOverridesFilePath . $this->table . '.php',
-<<<EOS
+            <<<EOS
 \$tempTypes = {$tempTypes};
 \$GLOBALS['TCA']['{$this->table}']['types'] += \$tempTypes;
 
 EOS
+            ,
+            PhpAwareInterface::PHPFILE_DEFINED_TYPO3_MODE | PhpAwareInterface::PHPFILE_CLOSURE_FUNCTION
         );
     }
 }

@@ -15,9 +15,9 @@
                     ""
                 ]
             },
-            "empty-content-element": {
+            "empty_content_element": {
                 "label": "Empty Content Element",
-                "key": "empty-content-element",
+                "key": "empty_content_element",
                 "shortLabel": "Empty",
                 "description": "Content Element that has no column definitions",
                 "icon": "fa-remove",
@@ -73,6 +73,21 @@
                 "options": {
                     "3": "rte"
                 }
+            },
+            "hidden-element": {
+                "label": "Hidden element",
+                "key": "hidden-element",
+                "shortLabel": "Hidden",
+                "description": "This element is hidden in mask configuration",
+                "icon": "fa-ban",
+                "color": "#ff0000",
+                "columns": [
+                    "header"
+                ],
+                "labels": [
+                    ""
+                ],
+                "hidden": 1
             }
         },
         "sql": {
@@ -443,6 +458,12 @@
                     }
                 },
                 "exclude": "1",
+                "cTypes": [
+                    "header",
+                    "textmedia",
+                    "shortcut",
+                    "list"
+                ],
                 "inlineParent": "tx_mask_additionalcontent",
                 "label": "More Content",
                 "key": "morecontent"
@@ -457,5 +478,16 @@
                 }
             }
         }
+    },
+    "mask_export": {
+        "extensionName": "mask_example_export",
+        "vendorName": "IchHabRecht",
+        "includedElements": [
+            "default-extension-icon",
+            "empty_content_element",
+            "hidden-element",
+            "nested-content-elements",
+            "simple-element"
+        ]
     }
 }

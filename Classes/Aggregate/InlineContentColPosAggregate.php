@@ -1,29 +1,23 @@
 <?php
-namespace CPSIT\MaskExport\Aggregate;
 
-/***************************************************************
- *  Copyright notice
+declare(strict_types=1);
+
+namespace IchHabRecht\MaskExport\Aggregate;
+
+/*
+ * This file is part of the TYPO3 extension mask_export.
  *
- *  (c) 2016 Nicole Cordes <typo3@cordes.co>, CPS-IT GmbH
+ * (c) 2016 Nicole Cordes <typo3@cordes.co>, CPS-IT GmbH
  *
- *  All rights reserved
+ * It is free software; you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License, either version 2
+ * of the License, or any later version.
  *
- *  This script is part of the TYPO3 project. The TYPO3 project is
- *  free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  The GNU General Public License can be found at
- *  http://www.gnu.org/copyleft/gpl.html.
- *
- *  This script is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  This copyright notice MUST APPEAR in all copies of the script!
- ***************************************************************/
+ * For the full copyright and license information, please read the
+ * LICENSE file that was distributed with this source code.
+ */
+
+use TYPO3\CMS\Core\Utility\ArrayUtility;
 
 class InlineContentColPosAggregate extends AbstractInlineContentAggregate implements LanguageAwareInterface, PhpAwareInterface
 {
@@ -34,11 +28,6 @@ class InlineContentColPosAggregate extends AbstractInlineContentAggregate implem
      * @var string
      */
     protected $languageFileIdentifier = 'locallang_db.xlf';
-
-    /**
-     * @var string
-     */
-    protected $languageFilePath = 'Resources/Private/Language/';
 
     /**
      * Adds dataProvider for inline content colPos name
@@ -58,7 +47,7 @@ class InlineContentColPosAggregate extends AbstractInlineContentAggregate implem
 
         $this->appendPhpFile(
             'ext_localconf.php',
-<<<EOS
+            <<<EOS
 \$GLOBALS['TYPO3_CONF_VARS']['SYS']['formEngine']['formDataGroup']['tcaDatabaseRecord'][\MASK\Mask\Form\FormDataProvider\TcaColPosItem::class] = [
     'depends' => [
         \TYPO3\CMS\Backend\Form\FormDataProvider\DatabaseRowDefaultValues::class,
@@ -69,17 +58,20 @@ class InlineContentColPosAggregate extends AbstractInlineContentAggregate implem
 ];
 
 EOS
+            ,
+            PhpAwareInterface::PHPFILE_DEFINED_TYPO3_MODE | PhpAwareInterface::PHPFILE_CLOSURE_FUNCTION
         );
 
-        sort($inlineFields);
-        array_walk($inlineFields, function (&$value) {
-            $value .= '_parent';
+        $flattenedInlineFields = [];
+        array_walk_recursive($inlineFields, function ($field) use (&$flattenedInlineFields) {
+            $flattenedInlineFields[] = $field . '_parent';
         });
-        $supportedInlineParentFields = var_export($inlineFields, true);
+        sort($flattenedInlineFields);
+        $supportedInlineParentFields = ArrayUtility::arrayExport($flattenedInlineFields);
 
         $this->addPhpFile(
             'Classes/Form/FormDataProvider/TcaColPosItem.php',
-<<<EOS
+            <<<EOS
 namespace MASK\Mask\Form\FormDataProvider;
 
 use TYPO3\CMS\Backend\Form\FormDataProviderInterface;

@@ -1,29 +1,23 @@
 <?php
-namespace CPSIT\MaskExport\Aggregate;
 
-/***************************************************************
- *  Copyright notice
+declare(strict_types=1);
+
+namespace IchHabRecht\MaskExport\Aggregate;
+
+/*
+ * This file is part of the TYPO3 extension mask_export.
  *
- *  (c) 2016 Nicole Cordes <typo3@cordes.co>, CPS-IT GmbH
+ * (c) 2016 Nicole Cordes <typo3@cordes.co>, CPS-IT GmbH
  *
- *  All rights reserved
+ * It is free software; you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License, either version 2
+ * of the License, or any later version.
  *
- *  This script is part of the TYPO3 project. The TYPO3 project is
- *  free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  The GNU General Public License can be found at
- *  http://www.gnu.org/copyleft/gpl.html.
- *
- *  This script is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  This copyright notice MUST APPEAR in all copies of the script!
- ***************************************************************/
+ * For the full copyright and license information, please read the
+ * LICENSE file that was distributed with this source code.
+ */
+
+use TYPO3\CMS\Core\Utility\ArrayUtility;
 
 class InlineContentCTypeAggregate extends AbstractInlineContentAggregate implements PhpAwareInterface
 {
@@ -40,12 +34,14 @@ class InlineContentCTypeAggregate extends AbstractInlineContentAggregate impleme
         }
 
         $supportedInlineParentFields = [];
-        foreach ($inlineFields as $field) {
-            if (empty($this->maskConfiguration['tt_content']['tca'][$field]['cTypes'])) {
-                continue;
-            }
+        foreach ($inlineFields as $table => $fieldArray) {
+            foreach ($fieldArray as $field) {
+                if (empty($this->maskConfiguration[$table]['tca'][$field]['cTypes'])) {
+                    continue;
+                }
 
-            $supportedInlineParentFields[$field . '_parent'] = $this->maskConfiguration['tt_content']['tca'][$field]['cTypes'];
+                $supportedInlineParentFields[$field . '_parent'] = $this->maskConfiguration[$table]['tca'][$field]['cTypes'];
+            }
         }
 
         if (empty($supportedInlineParentFields)) {
@@ -53,7 +49,7 @@ class InlineContentCTypeAggregate extends AbstractInlineContentAggregate impleme
         }
 
         ksort($supportedInlineParentFields);
-        $supportedInlineParentFields = var_export($supportedInlineParentFields, true);
+        $supportedInlineParentFields = ArrayUtility::arrayExport($supportedInlineParentFields);
 
         $this->appendPhpFile(
             'ext_localconf.php',
@@ -65,11 +61,13 @@ class InlineContentCTypeAggregate extends AbstractInlineContentAggregate impleme
 ];
 
 EOS
+            ,
+            PhpAwareInterface::PHPFILE_DEFINED_TYPO3_MODE | PhpAwareInterface::PHPFILE_CLOSURE_FUNCTION
         );
 
         $this->addPhpFile(
             'Classes/Form/FormDataProvider/TcaCTypeItem.php',
-<<<EOS
+            <<<EOS
 namespace MASK\Mask\Form\FormDataProvider;
 
 use TYPO3\CMS\Backend\Form\FormDataProviderInterface;
@@ -88,8 +86,8 @@ class TcaCTypeItem implements FormDataProviderInterface
     public function addData(array \$result)
     {
         if ('tt_content' !== \$result['tableName']
-            || empty(\$result['databaseRow']['colPos'][0])
-            || 999 !== (int)\$result['databaseRow']['colPos'][0]
+            || empty(\$result['databaseRow']['colPos'])
+            || (is_array(\$result['databaseRow']['colPos']) ? 999 !== (int)\$result['databaseRow']['colPos'][0] : 999 !== (int)\$result['databaseRow']['colPos'])
         ) {
             return \$result;
         }

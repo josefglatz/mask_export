@@ -1,41 +1,53 @@
 <?php
-namespace CPSIT\MaskExport\CodeGenerator;
 
-/***************************************************************
- *  Copyright notice
- *
- *  (c) 2016 Benjamin Butschell <bb@webprofil.at>, WEBprofil - Gernot Ploiner e.U.
- *
- *  All rights reserved
- *
- *  This script is part of the TYPO3 project. The TYPO3 project is
- *  free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  The GNU General Public License can be found at
- *  http://www.gnu.org/copyleft/gpl.html.
- *
- *  This script is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  This copyright notice MUST APPEAR in all copies of the script!
- ***************************************************************/
+declare(strict_types=1);
 
-use MASK\Mask\CodeGenerator\AbstractCodeGenerator;
+namespace IchHabRecht\MaskExport\CodeGenerator;
+
+/*
+ * This file is part of the TYPO3 extension mask_export.
+ *
+ * (c) 2016 Benjamin Butschell <bb@webprofil.at>, WEBprofil - Gernot Ploiner e.U.
+ * (c) 2016 Nicole Cordes <typo3@cordes.co>, CPS-IT GmbH
+ *
+ * It is free software; you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License, either version 2
+ * of the License, or any later version.
+ *
+ * For the full copyright and license information, please read the
+ * LICENSE file that was distributed with this source code.
+ */
+
+use MASK\Mask\Domain\Repository\StorageRepository;
 use MASK\Mask\Helper\FieldHelper;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 /**
  * Generates the html and fluid for mask content elements
- *
- * @author Benjamin Butschell <bb@webprofil.at>
  */
-class HtmlCodeGenerator extends AbstractCodeGenerator
+class HtmlCodeGenerator
 {
+    /**
+     * @var FieldHelper
+     */
+    protected $fieldHelper;
+
+    /**
+     * @var StorageRepository
+     */
+    protected $storageRepository;
+
+    public function __construct(StorageRepository $storageRepository = null, FieldHelper $fieldHelper = null)
+    {
+        $this->storageRepository = $storageRepository ?: GeneralUtility::makeInstance(StorageRepository::class);
+
+        if (method_exists($this->storageRepository, 'getFormType')) {
+            $this->fieldHelper = $this->storageRepository;
+        } else {
+            $this->fieldHelper = $fieldHelper ?: GeneralUtility::makeInstance(FieldHelper::class, $this->storageRepository);
+        }
+    }
+
     /**
      * Generates Fluid HTML for Contentelements
      *
@@ -71,12 +83,16 @@ EOS;
      */
     protected function generateFieldHtml($fieldKey, $elementKey, $table = 'tt_content', $datafield = 'data')
     {
+        $formType = strtolower($this->fieldHelper->getFormType($fieldKey, $elementKey, $table));
+        if (in_array($formType, ['linebreak', 'tab'], true)) {
+            return '';
+        }
+
         $html = '';
-        $fieldHelper = GeneralUtility::makeInstance(FieldHelper::class);
-        switch ($fieldHelper->getFormType($fieldKey, $elementKey, $table)) {
-            case 'Check':
+        switch ($formType) {
+            case 'check':
                 $html .= <<<EOS
-<f:if condition"{{$datafield}.{$fieldKey}}">
+<f:if condition="{{$datafield}.{$fieldKey}}">
     <f:then>
         On<br />
     </f:then>
@@ -89,7 +105,7 @@ EOS;
 EOS;
                 break;
 
-            case 'Content':
+            case 'content':
                 $html .= <<<EOS
 <f:if condition="{{$datafield}_{$fieldKey}}">
     <f:for each="{{$datafield}_{$fieldKey}}" as="content_item">
@@ -101,7 +117,7 @@ EOS;
 EOS;
                 break;
 
-            case 'Date':
+            case 'date':
                 $html .= <<<EOS
 <f:if condition="{{$datafield}.{$fieldKey}}">
     <f:format.date format="d.m.Y">{{$datafield}.{$fieldKey}}</f:format.date><br />
@@ -111,7 +127,7 @@ EOS;
 EOS;
                 break;
 
-            case 'Datetime':
+            case 'datetime':
                 $html .= <<<EOS
 <f:if condition="{{$datafield}.{$fieldKey}}">
     <f:format.date format="d.m.Y - H:i:s">{{$datafield}.{$fieldKey}}</f:format.date><br />
@@ -121,7 +137,7 @@ EOS;
 EOS;
                 break;
 
-            case 'File':
+            case 'file':
                 $html .= <<<EOS
 <f:if condition="{{$datafield}_{$fieldKey}}">
     <f:for each="{{$datafield}_{$fieldKey}}" as="file">
@@ -134,7 +150,7 @@ EOS;
 EOS;
                 break;
 
-            case 'Float':
+            case 'float':
                 $html .= <<<EOS
 <f:if condition="{{$datafield}.{$fieldKey}}">
     <f:format.number decimals="2" decimalSeparator="," thousandsSeparator=".">{{$datafield}.{$fieldKey}}</f:format.number><br />
@@ -144,7 +160,7 @@ EOS;
 EOS;
                 break;
 
-            case 'Inline':
+            case 'inline':
                 $inlineFields = $this->storageRepository->loadInlineFields($fieldKey);
                 $inlineFieldsHtml = '';
                 $datafieldInline = strtr($datafield, '.', '_');
@@ -168,7 +184,7 @@ EOS;
 EOS;
                 break;
 
-            case 'Link':
+            case 'link':
                 $html .= <<<EOS
 <f:if condition="{{$datafield}.{$fieldKey}}">
     <f:link.page pageUid="{{$datafield}.{$fieldKey}}">{{$datafield}.{$fieldKey}}</f:link.page><br />
@@ -178,8 +194,8 @@ EOS;
 EOS;
                 break;
 
-            case 'Radio':
-            case 'Select':
+            case 'radio':
+            case 'select':
                 $html .= <<<EOS
 <f:if condition="{{$datafield}.{$fieldKey}}">
     <f:switch expression="{{$datafield}.{$fieldKey}}">
@@ -193,7 +209,7 @@ EOS;
 EOS;
                 break;
 
-            case 'Richtext':
+            case 'richtext':
                 $html .= <<<EOS
 <f:if condition="{{$datafield}.{$fieldKey}}">
     <f:format.html parseFuncTSPath="lib.parseFunc_RTE">{{$datafield}.{$fieldKey}}</f:format.html><br />
@@ -203,7 +219,7 @@ EOS;
 EOS;
                 break;
 
-            case 'Text':
+            case 'text':
                 $html .= <<<EOS
 <f:if condition="{{$datafield}.{$fieldKey}}">
     <f:format.nl2br>{{$datafield}.{$fieldKey}}</f:format.nl2br><br />

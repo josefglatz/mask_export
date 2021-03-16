@@ -1,31 +1,23 @@
 <?php
-namespace CPSIT\MaskExport\Aggregate;
 
-/***************************************************************
- *  Copyright notice
- *
- *  (c) 2016 Nicole Cordes <typo3@cordes.co>, CPS-IT GmbH
- *
- *  All rights reserved
- *
- *  This script is part of the TYPO3 project. The TYPO3 project is
- *  free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  The GNU General Public License can be found at
- *  http://www.gnu.org/copyleft/gpl.html.
- *
- *  This script is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  This copyright notice MUST APPEAR in all copies of the script!
- ***************************************************************/
+declare(strict_types=1);
 
-use CPSIT\MaskExport\CodeGenerator\HtmlCodeGenerator;
+namespace IchHabRecht\MaskExport\Aggregate;
+
+/*
+ * This file is part of the TYPO3 extension mask_export.
+ *
+ * (c) 2016 Nicole Cordes <typo3@cordes.co>, CPS-IT GmbH
+ *
+ * It is free software; you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License, either version 2
+ * of the License, or any later version.
+ *
+ * For the full copyright and license information, please read the
+ * LICENSE file that was distributed with this source code.
+ */
+
+use IchHabRecht\MaskExport\CodeGenerator\HtmlCodeGenerator;
 use TYPO3\CMS\Core\Database\DatabaseConnection;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
@@ -64,11 +56,6 @@ class ContentRenderingAggregate extends AbstractOverridesAggregate implements Pl
     protected $partialPath = 'Partials/';
 
     /**
-     * @var string
-     */
-    protected $typoScriptFilePath = 'Configuration/TypoScript/';
-
-    /**
      * @param array $maskConfiguration
      * @param HtmlCodeGenerator $htmlCodeGenerator
      */
@@ -89,7 +76,7 @@ class ContentRenderingAggregate extends AbstractOverridesAggregate implements Pl
         }
 
         $this->addPlainTextFile(
-            $this->typoScriptFilePath . 'constants.ts',
+            $this->typoScriptFilePath . 'constants.typoscript',
             <<<EOS
 # cat=mask/file; type=string; label=Path to template root (FE)
 plugin.tx_mask.view.templateRootPath =
@@ -103,7 +90,7 @@ plugin.tx_mask.view.layoutRootPath =
 EOS
         );
         $this->addPlainTextFile(
-            $this->typoScriptFilePath . 'setup.ts',
+            $this->typoScriptFilePath . 'setup.typoscript',
             ''
         );
         $this->appendPhpFile(
@@ -116,6 +103,8 @@ EOS
 );
 
 EOS
+            ,
+            PhpAwareInterface::PHPFILE_DEFINED_TYPO3_MODE | PhpAwareInterface::PHPFILE_CLOSURE_FUNCTION
         );
 
         foreach ($this->maskConfiguration[$this->table]['elements'] as $element) {
@@ -137,16 +126,16 @@ EOS
         $key = $element['key'];
         $templateName = GeneralUtility::underscoredToUpperCamelCase($key);
         $this->appendPlainTextFile(
-            $this->typoScriptFilePath . 'setup.ts',
+            $this->typoScriptFilePath . 'setup.typoscript',
             <<<EOS
 tt_content.mask_{$key} = FLUIDTEMPLATE
 tt_content.mask_{$key} {
     layoutRootPaths.0 = {$layoutsPath}
-    layoutRootPaths.1 = {\$plugin.tx_mask.view.layoutRootPath}
+    layoutRootPaths.10 = {\$plugin.tx_mask.view.layoutRootPath}
     partialRootPaths.0 = {$partialPath}
-    partialRootPaths.1 = {\$plugin.tx_mask.view.partialRootPath}
+    partialRootPaths.10 = {\$plugin.tx_mask.view.partialRootPath}
     templateRootPaths.0 = {$templatesPath}
-    templateRootPaths.1 = {\$plugin.tx_mask.view.templateRootPath}
+    templateRootPaths.10 = {\$plugin.tx_mask.view.templateRootPath}
     templateName = {$templateName}
 
 EOS
@@ -155,12 +144,12 @@ EOS
         if (!empty($element['columns'])) {
             $dataProcessing = $this->addDataProcessing('tt_content', $element['columns']);
             if (!empty($dataProcessing)) {
-                $this->appendPlainTextFile($this->typoScriptFilePath . 'setup.ts', $dataProcessing);
+                $this->appendPlainTextFile($this->typoScriptFilePath . 'setup.typoscript', $dataProcessing);
             }
         }
 
         $this->appendPlainTextFile(
-            $this->typoScriptFilePath . 'setup.ts',
+            $this->typoScriptFilePath . 'setup.typoscript',
             <<<EOS
 }
 
@@ -248,6 +237,9 @@ EOS;
     protected function addDatabaseQueryProcessorForField($table, $columnName, $index)
     {
         $where = $GLOBALS['TCA'][$table]['columns'][$columnName]['config']['foreign_field'] . '=###uid### AND deleted=0 AND hidden=0';
+        $markerArray = [
+            'uid.field' => 'uid',
+        ];
         $overrideColumns = [];
         if (!empty($GLOBALS['TCA'][$table]['columns'][$columnName]['config']['foreign_record_defaults'])) {
             $overrideColumns = $GLOBALS['TCA'][$table]['columns'][$columnName]['config']['foreign_record_defaults'];
@@ -268,18 +260,37 @@ EOS;
             if ('CType' === $key) {
                 continue;
             }
-            $where .= ' AND ' . $key . '=' . $this->getDatabaseConnection()->fullQuoteStr($value, 'tt_content');
+            $where .= ' AND ' . $key . '=###' . $key . '###';
+            $markerArray[$key] = $value;
         }
 
         if (!empty($this->maskConfiguration[$table]['tca'][$columnName]['cTypes'])) {
-            $types = $this->maskConfiguration[$table]['tca'][$columnName]['cTypes'];
-            $where .= ' AND CType IN (' . implode(', ', $this->getDatabaseConnection()->fullQuoteArray($types, $table)) . ')';
+            $types = array_combine(
+                array_map(
+                    function ($value) {
+                        return 'CType' . $value;
+                    },
+                    range(1, count($this->maskConfiguration[$table]['tca'][$columnName]['cTypes']))
+                ),
+                $this->maskConfiguration[$table]['tca'][$columnName]['cTypes']
+            );
+            $where .= ' AND CType IN (###' . implode('###, ###', array_keys($types)) . '###)';
+            $markerArray += $types;
         }
 
         $sorting = 'uid';
         if (!empty($GLOBALS['TCA'][$table]['columns'][$columnName]['config']['foreign_sortby'])) {
             $sorting = $GLOBALS['TCA'][$table]['columns'][$columnName]['config']['foreign_sortby'];
         }
+
+        uksort($markerArray, 'strnatcasecmp');
+        $markers = implode("\n        ", array_map(
+            function ($key, $value) {
+                return 'markers.' . $key . (strpos($key, '.') === false ? '.value' : '') . ' = ' . $value;
+            },
+            array_keys($markerArray),
+            $markerArray
+        ));
 
         return <<<EOS
     dataProcessing.{$index} = TYPO3\CMS\Frontend\DataProcessing\DatabaseQueryProcessor
@@ -289,9 +300,7 @@ EOS;
         pidInList.field = pid
         where = {$where}
         orderBy = {$sorting}
-        markers {
-            uid.field = uid
-        }
+        {$markers}
         as = data_{$columnName}
     }
 

@@ -1,31 +1,24 @@
 <?php
-namespace CPSIT\MaskExport\Aggregate;
 
-/***************************************************************
- *  Copyright notice
- *
- *  (c) 2016 Nicole Cordes <typo3@cordes.co>, CPS-IT GmbH
- *
- *  All rights reserved
- *
- *  This script is part of the TYPO3 project. The TYPO3 project is
- *  free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  The GNU General Public License can be found at
- *  http://www.gnu.org/copyleft/gpl.html.
- *
- *  This script is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  This copyright notice MUST APPEAR in all copies of the script!
- ***************************************************************/
+declare(strict_types=1);
 
-use CPSIT\MaskExport\CodeGenerator\BackendFluidCodeGenerator;
+namespace IchHabRecht\MaskExport\Aggregate;
+
+/*
+ * This file is part of the TYPO3 extension mask_export.
+ *
+ * (c) 2016 Nicole Cordes <typo3@cordes.co>, CPS-IT GmbH
+ *
+ * It is free software; you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License, either version 2
+ * of the License, or any later version.
+ *
+ * For the full copyright and license information, please read the
+ * LICENSE file that was distributed with this source code.
+ */
+
+use IchHabRecht\MaskExport\CodeGenerator\BackendFluidCodeGenerator;
+use TYPO3\CMS\Core\Utility\ArrayUtility;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 class BackendPreviewAggregate extends AbstractOverridesAggregate implements PlainTextFileAwareInterface
@@ -36,6 +29,11 @@ class BackendPreviewAggregate extends AbstractOverridesAggregate implements Plai
      * @var BackendFluidCodeGenerator
      */
     protected $fluidCodeGenerator;
+
+    /**
+     * @var string
+     */
+    protected $pageTSConfigFileIdentifier = 'BackendPreview.tsconfig';
 
     /**
      * @var string
@@ -58,18 +56,41 @@ class BackendPreviewAggregate extends AbstractOverridesAggregate implements Plai
      */
     protected function process()
     {
-        $extensionConfiguration = unserialize($GLOBALS['TYPO3_CONF_VARS']['EXT']['extConf']['mask_export']);
-        if (empty($extensionConfiguration['backendPreview'])) {
-            return;
-        }
-
         if (empty($this->maskConfiguration[$this->table]['elements'])) {
             return;
         }
 
+        $this->addPageTsConfiguration();
         $this->addDrawItemHook();
         $this->replaceTableLabels();
-        $this->addFluidTemplates($this->maskConfiguration[$this->table]['elements']);
+        $this->addFluidTemplates();
+    }
+
+    protected function addPageTsConfiguration()
+    {
+        $rootPaths = $this->getFluidRootPaths();
+
+        $this->appendPlainTextFile(
+            $this->pageTSConfigFilePath . $this->pageTSConfigFileIdentifier,
+            <<<EOS
+mod.web_layout.tt_content.preview.mask.templateRootPath = {$rootPaths['template']}
+mod.web_layout.tt_content.preview.mask.layoutRootPath = {$rootPaths['layout']}
+mod.web_layout.tt_content.preview.mask.partialRootPath = {$rootPaths['partials']}
+
+EOS
+        );
+
+        $this->appendPhpFile(
+            'ext_localconf.php',
+            <<<EOS
+\\TYPO3\\CMS\\Core\\Utility\\ExtensionManagementUtility::addPageTSConfig(
+    '<INCLUDE_TYPOSCRIPT: source="FILE:EXT:mask/{$this->pageTSConfigFilePath}{$this->pageTSConfigFileIdentifier}">'
+);
+
+EOS
+            ,
+            PhpAwareInterface::PHPFILE_DEFINED_TYPO3_MODE | PhpAwareInterface::PHPFILE_CLOSURE_FUNCTION
+        );
     }
 
     /**
@@ -85,16 +106,17 @@ class BackendPreviewAggregate extends AbstractOverridesAggregate implements Plai
     MASK\Mask\Hooks\PageLayoutViewDrawItem::class;
 
 EOS
+            ,
+            PhpAwareInterface::PHPFILE_DEFINED_TYPO3_MODE | PhpAwareInterface::PHPFILE_CLOSURE_FUNCTION
         );
 
-        $contentTypes = array_map(
-            function ($key) {
-                return 'mask_' . $key;
-            },
-            array_keys($this->maskConfiguration[$this->table]['elements'])
-        );
-        sort($contentTypes);
-        $supportedContentTypes = var_export($contentTypes, true);
+        $rootPaths = $this->getFluidRootPaths();
+        $contentTypes = [];
+        foreach (array_keys($this->maskConfiguration[$this->table]['elements']) as $key) {
+            $contentTypes['mask_' . $key] = GeneralUtility::underscoredToUpperCamelCase($key);
+        }
+        asort($contentTypes);
+        $supportedContentTypes = ArrayUtility::arrayExport($contentTypes);
 
         $this->addPhpFile(
             'Classes/Hooks/PageLayoutViewDrawItem.php',
@@ -107,7 +129,6 @@ use TYPO3\CMS\Backend\Form\FormDataGroup\TcaDatabaseRecord;
 use TYPO3\CMS\Backend\View\PageLayoutView;
 use TYPO3\CMS\Backend\View\PageLayoutViewDrawItemHookInterface;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
-use TYPO3\CMS\Extbase\Object\ObjectManager;
 use TYPO3\CMS\Fluid\View\StandaloneView;
 
 class PageLayoutViewDrawItem implements PageLayoutViewDrawItemHookInterface
@@ -118,9 +139,14 @@ class PageLayoutViewDrawItem implements PageLayoutViewDrawItemHookInterface
     protected \$supportedContentTypes = {$supportedContentTypes};
 
     /**
-     * @var string
+     * @var StandaloneView
      */
-    protected \$rootPath = 'EXT:mask/Resources/Private/Backend/';
+    protected \$view;
+
+    public function __construct(StandaloneView \$view = null)
+    {
+        \$this->view = \$view ?: GeneralUtility::makeInstance(StandaloneView::class);
+    }
 
     /**
      * Preprocesses the preview rendering of a content element.
@@ -133,22 +159,9 @@ class PageLayoutViewDrawItem implements PageLayoutViewDrawItemHookInterface
      */
     public function preProcess(PageLayoutView &\$parentObject, &\$drawItem, &\$headerContent, &\$itemContent, array &\$row)
     {
-        if (!in_array(\$row['CType'], \$this->supportedContentTypes, true)) {
+        if (!isset(\$this->supportedContentTypes[\$row['CType']])) {
             return;
         }
-
-        \$contentType = explode('_', \$row['CType'], 2);
-        \$templateKey = GeneralUtility::underscoredToUpperCamelCase(\$contentType[1]);
-        \$templatePath = \$this->getTemplatePath(\$templateKey);
-        if (!file_exists(\$templatePath)) {
-            return;
-        }
-
-        \$objectManager = GeneralUtility::makeInstance(ObjectManager::class);
-        \$view = \$objectManager->get(StandaloneView::class);
-        \$view->setTemplatePathAndFilename(\$templatePath);
-        \$view->setLayoutRootPaths([\$this->rootPath . 'Layouts/']);
-        \$view->setPartialRootPaths([\$this->rootPath . 'Partials/']);
         
         \$formDataGroup = GeneralUtility::makeInstance(TcaDatabaseRecord::class);
         \$formDataCompiler = GeneralUtility::makeInstance(FormDataCompiler::class, \$formDataGroup);
@@ -160,15 +173,16 @@ class PageLayoutViewDrawItem implements PageLayoutViewDrawItemHookInterface
         try {
             \$result = \$formDataCompiler->compile(\$formDataCompilerInput);
             \$processedRow = \$this->getProcessedData(\$result['databaseRow'], \$result['processedTca']['columns']);
-    
-            \$view->assignMultiple(
+            
+            \$this->configureView(\$result['pageTsConfig'], \$row['CType']);
+            \$this->view->assignMultiple(
                 [
                     'row' => \$row,
                     'processedRow' => \$processedRow,
                 ]
             );
     
-            \$itemContent = \$view->render();
+            \$itemContent = \$this->view->render();
         } catch (Exception \$exception) {
             \$message = \$GLOBALS['BE_USER']->errorMsg;
             if (empty(\$message)) {
@@ -182,14 +196,35 @@ class PageLayoutViewDrawItem implements PageLayoutViewDrawItemHookInterface
     }
 
     /**
-     * This function is needed for testing purpose
-     *
-     * @param string \$templateKey
-     * @return string
+     * @param array \$pageTsConfig
+     * @param string \$contentType
      */
-    protected function getTemplatePath(\$templateKey)
+    protected function configureView(array \$pageTsConfig, \$contentType)
     {
-        return GeneralUtility::getFileAbsFileName(\$this->rootPath . 'Templates/Content/' . \$templateKey . '.html');
+        if (empty(\$pageTsConfig['mod.']['web_layout.']['tt_content.']['preview.'])) {
+            return;
+        }
+
+        \$previewConfiguration = \$pageTsConfig['mod.']['web_layout.']['tt_content.']['preview.'];
+        list(\$extensionKey) = explode('_', \$contentType, 2);
+        \$extensionKey .= '.';
+        if (!empty(\$previewConfiguration[\$extensionKey]['templateRootPath'])) {
+            \$this->view->setTemplateRootPaths([
+                '{$rootPaths['template']}',
+                \$previewConfiguration[\$extensionKey]['templateRootPath'],
+            ]);
+        }
+        if (!empty(\$previewConfiguration[\$extensionKey]['layoutRootPath'])) {
+            \$this->view->setLayoutRootPaths([
+                \$previewConfiguration[\$extensionKey]['layoutRootPath'],
+            ]);
+        }
+        if (!empty(\$previewConfiguration[\$extensionKey]['partialRootPath'])) {
+            \$this->view->setPartialRootPaths([
+                \$previewConfiguration[\$extensionKey]['partialRootPath'],
+            ]);
+        }
+        \$this->view->setTemplate(\$this->supportedContentTypes[\$contentType]);
     }
 
     /**
@@ -238,16 +273,33 @@ EOS
                 continue;
             }
 
-            $GLOBALS['TCA'][$table]['columns'] = $this->replaceFieldLabels($GLOBALS['TCA'][$table]['columns'], $table);
+            $columns = $GLOBALS['TCA'][$table]['columns'];
+            if ($table === 'tt_content' && !empty($this->maskConfiguration['tt_content']['elements'])) {
+                $columns = [];
+                foreach ($this->maskConfiguration['tt_content']['elements'] as $element) {
+                    $columns = array_merge($columns, $element['columns'] ?? []);
+                }
+                $columns = array_combine($columns, $columns);
+            }
+
+            $columns = array_intersect_key(
+                $GLOBALS['TCA'][$table]['columns'],
+                $columns
+            );
+
+            $columns = $this->replaceFieldLabels($columns, $table);
+            $columns = $this->replaceItemsLabels($columns, $table);
+
+            $GLOBALS['TCA'][$table]['columns'] = array_replace(
+                $GLOBALS['TCA'][$table]['columns'],
+                $columns
+            );
         }
     }
 
-    /**
-     * @param array $elements
-     */
-    protected function addFluidTemplates(array $elements)
+    protected function addFluidTemplates()
     {
-        foreach ($elements as $key => $element) {
+        foreach ($this->maskConfiguration[$this->table]['elements'] as $key => $element) {
             $templateKey = GeneralUtility::underscoredToUpperCamelCase($key);
             $templatePath = $this->templatesFilePath . 'Content/' . $templateKey . '.html';
 
@@ -271,5 +323,16 @@ EOS
                 }
             }
         }
+    }
+
+    protected function getFluidRootPaths()
+    {
+        $rootPath = dirname($this->templatesFilePath);
+
+        return [
+            'template' => 'EXT:mask/' . $this->templatesFilePath . 'Content/',
+            'layout' => 'EXT:mask/' . $rootPath . '/Layout/',
+            'partials' => 'EXT:mask/' . $rootPath . '/Partials/',
+        ];
     }
 }

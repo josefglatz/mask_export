@@ -1,29 +1,21 @@
 <?php
-namespace CPSIT\MaskExport\Aggregate;
 
-/***************************************************************
- *  Copyright notice
+declare(strict_types=1);
+
+namespace IchHabRecht\MaskExport\Aggregate;
+
+/*
+ * This file is part of the TYPO3 extension mask_export.
  *
- *  (c) 2016 Nicole Cordes <typo3@cordes.co>, CPS-IT GmbH
+ * (c) 2016 Nicole Cordes <typo3@cordes.co>, CPS-IT GmbH
  *
- *  All rights reserved
+ * It is free software; you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License, either version 2
+ * of the License, or any later version.
  *
- *  This script is part of the TYPO3 project. The TYPO3 project is
- *  free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  The GNU General Public License can be found at
- *  http://www.gnu.org/copyleft/gpl.html.
- *
- *  This script is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  This copyright notice MUST APPEAR in all copies of the script!
- ***************************************************************/
+ * For the full copyright and license information, please read the
+ * LICENSE file that was distributed with this source code.
+ */
 
 trait TcaAwareTrait
 {
@@ -99,12 +91,11 @@ trait TcaAwareTrait
                 $field . '_parent',
                 $definition
             );
-        }
-        if ('pages' === $table) {
-            $this->addSqlDefinition(
-                'pages_language_overlay',
-                $field,
-                $definition
+            $this->addSqlDefinitions(
+                'tt_content',
+                [
+                    'KEY ' . $field . '_parent' => '(' . $field . '_parent,pid,deleted)',
+                ]
             );
         }
     }
@@ -117,7 +108,7 @@ trait TcaAwareTrait
     protected function replaceFieldLabels(array $fields, $table)
     {
         foreach ($fields as $field => &$configuration) {
-            if (0 === strpos($configuration['label'], 'LLL:')) {
+            if (0 !== strpos($field, 'tx_mask_') || 0 === strpos(($configuration['label'] ?? ''), 'LLL:')) {
                 continue;
             }
             if (!isset($configuration['label']) && empty($this->maskConfiguration[$table]['elements'])) {
@@ -148,6 +139,38 @@ trait TcaAwareTrait
             );
             $configuration['label'] = 'LLL:EXT:mask/'
                 . $this->languageFilePath . $this->languageFileIdentifier . ':' . $table . '.' . $field;
+        }
+
+        return $fields;
+    }
+
+    /**
+     * @param array $fields
+     * @param string $table
+     * @return array
+     */
+    protected function replaceItemsLabels(array $fields, $table)
+    {
+        foreach ($fields as $field => &$configuration) {
+            if (0 !== strpos($field, 'tx_mask_') || empty($configuration['config']['items'])) {
+                continue;
+            }
+            foreach ($configuration['config']['items'] as $key => &$item) {
+                if (empty($item[0])) {
+                    continue;
+                }
+                if (0 === strpos($item[0], 'LLL:')) {
+                    continue;
+                }
+
+                $this->addLabel(
+                    $this->languageFilePath . $this->languageFileIdentifier,
+                    $table . '.' . $field . '.I.' . $key,
+                    $item[0]
+                );
+                $item[0] = 'LLL:EXT:mask/'
+                    . $this->languageFilePath . $this->languageFileIdentifier . ':' . $table . '.' . $field . '.I.' . $key;
+            }
         }
 
         return $fields;

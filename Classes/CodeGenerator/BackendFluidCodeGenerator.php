@@ -1,29 +1,21 @@
 <?php
-namespace CPSIT\MaskExport\CodeGenerator;
 
-/***************************************************************
- *  Copyright notice
+declare(strict_types=1);
+
+namespace IchHabRecht\MaskExport\CodeGenerator;
+
+/*
+ * This file is part of the TYPO3 extension mask_export.
  *
- *  (c) 2016 Nicole Cordes <typo3@cordes.co>, CPS-IT GmbH
+ * (c) 2016 Nicole Cordes <typo3@cordes.co>, CPS-IT GmbH
  *
- *  All rights reserved
+ * It is free software; you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License, either version 2
+ * of the License, or any later version.
  *
- *  This script is part of the TYPO3 project. The TYPO3 project is
- *  free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  The GNU General Public License can be found at
- *  http://www.gnu.org/copyleft/gpl.html.
- *
- *  This script is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  This copyright notice MUST APPEAR in all copies of the script!
- ***************************************************************/
+ * For the full copyright and license information, please read the
+ * LICENSE file that was distributed with this source code.
+ */
 
 /**
  * Generates fluid for backend preview rendering
@@ -110,10 +102,16 @@ EOS;
                 $content .= $this->getInlineFluid($foreignLabelField, $foreignLabelFieldConfiguration, 'item');
                 break;
             default:
-                $content .= <<<EOS
+                if ($foreignLabelFieldConfiguration['config']['type'] === 'group'
+                    && $foreignLabelFieldConfiguration['config']['allowed'] === 'sys_file'
+                ) {
+                    $content .= $this->getSysFileFluid();
+                } else {
+                    $content .= <<<EOS
             <f:translate key="{$foreignLabel}" /> {{$variableIterator}.{$foreignLabelField}} (id={{$variableIterator}.uid})<br/>
 
 EOS;
+                }
         }
 
         $content .= <<<EOS
@@ -145,6 +143,30 @@ EOS;
             <li>{item}</li>
         </f:for>
     </ul>
+
+EOS;
+        }
+
+        return $content;
+    }
+
+    /**
+     * @return string
+     */
+    protected function getSysFileFluid()
+    {
+        if (version_compare(TYPO3_version, '8.6.0', '>=')) {
+            $content = <<<EOS
+    <ul>
+        <f:for each="{item.uid_local}" as="file">
+            <li><f:translate key="LLL:EXT:lang/locallang_tca.xlf:sys_file_reference.uid_local" /> {file.table}|{file.uid}|{file.title} (id={item.uid})</li>
+        </f:for>
+    </ul>
+
+EOS;
+        } else {
+            $content = <<<EOS
+    <f:translate key="LLL:EXT:lang/locallang_tca.xlf:sys_file_reference.uid_local" /> {item.uid_local} (id={item.uid})
 
 EOS;
         }

@@ -1,48 +1,48 @@
 <?php
-namespace CPSIT\MaskExport\Controller;
 
-/***************************************************************
- *  Copyright notice
- *
- *  (c) 2016 Nicole Cordes <typo3@cordes.co>, CPS-IT GmbH
- *
- *  All rights reserved
- *
- *  This script is part of the TYPO3 project. The TYPO3 project is
- *  free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  The GNU General Public License can be found at
- *  http://www.gnu.org/copyleft/gpl.html.
- *
- *  This script is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  This copyright notice MUST APPEAR in all copies of the script!
- ***************************************************************/
+declare(strict_types=1);
 
-use CPSIT\MaskExport\Aggregate\AggregateCollection;
-use CPSIT\MaskExport\Aggregate\BackendPreviewAggregate;
-use CPSIT\MaskExport\Aggregate\ContentElementIconAggregate;
-use CPSIT\MaskExport\Aggregate\ContentRenderingAggregate;
-use CPSIT\MaskExport\Aggregate\ExtensionConfigurationAggregate;
-use CPSIT\MaskExport\Aggregate\InlineContentColPosAggregate;
-use CPSIT\MaskExport\Aggregate\InlineContentCTypeAggregate;
-use CPSIT\MaskExport\Aggregate\NewContentElementWizardAggregate;
-use CPSIT\MaskExport\Aggregate\TcaAggregate;
-use CPSIT\MaskExport\Aggregate\TtContentOverridesAggregate;
-use CPSIT\MaskExport\FileCollection\FileCollection;
-use CPSIT\MaskExport\FileCollection\LanguageFileCollection;
-use CPSIT\MaskExport\FileCollection\PhpFileCollection;
-use CPSIT\MaskExport\FileCollection\PlainTextFileCollection;
-use CPSIT\MaskExport\FileCollection\SqlFileCollection;
+namespace IchHabRecht\MaskExport\Controller;
+
+/*
+ * This file is part of the TYPO3 extension mask_export.
+ *
+ * (c) 2016 Nicole Cordes <typo3@cordes.co>, CPS-IT GmbH
+ *
+ * It is free software; you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License, either version 2
+ * of the License, or any later version.
+ *
+ * For the full copyright and license information, please read the
+ * LICENSE file that was distributed with this source code.
+ */
+
+use IchHabRecht\MaskExport\Aggregate\AggregateCollection;
+use IchHabRecht\MaskExport\Aggregate\BackendPreviewAggregate;
+use IchHabRecht\MaskExport\Aggregate\ContentElementIconAggregate;
+use IchHabRecht\MaskExport\Aggregate\ContentRenderingAggregate;
+use IchHabRecht\MaskExport\Aggregate\ExtensionConfigurationAggregate;
+use IchHabRecht\MaskExport\Aggregate\InlineContentColPosAggregate;
+use IchHabRecht\MaskExport\Aggregate\InlineContentCTypeAggregate;
+use IchHabRecht\MaskExport\Aggregate\NewContentElementWizardAggregate;
+use IchHabRecht\MaskExport\Aggregate\TcaAggregate;
+use IchHabRecht\MaskExport\Aggregate\TtContentOverridesAggregate;
+use IchHabRecht\MaskExport\FileCollection\FileCollection;
+use IchHabRecht\MaskExport\FileCollection\LanguageFileCollection;
+use IchHabRecht\MaskExport\FileCollection\PhpFileCollection;
+use IchHabRecht\MaskExport\FileCollection\PlainTextFileCollection;
+use IchHabRecht\MaskExport\FileCollection\SqlFileCollection;
+use MASK\Mask\Domain\Repository\StorageRepository;
+use Symfony\Component\Finder\Finder;
 use TYPO3\CMS\Core\Authentication\BackendUserAuthentication;
+use TYPO3\CMS\Core\Core\Environment;
+use TYPO3\CMS\Core\Messaging\AbstractMessage;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Extbase\Mvc\Controller\ActionController;
+use TYPO3\CMS\Extbase\Object\ObjectManager;
+use TYPO3\CMS\Extensionmanager\Domain\Model\Extension;
+use TYPO3\CMS\Extensionmanager\Service\ExtensionManagementService;
+use TYPO3\CMS\Extensionmanager\Utility\InstallUtility;
 
 class ExportController extends ActionController
 {
@@ -64,7 +64,7 @@ class ExportController extends ActionController
     /**
      * @var string
      */
-    protected $defaultExtensionName = 'mask_export';
+    protected $defaultExtensionName = 'my_mask_export';
 
     /**
      * @var array
@@ -77,46 +77,82 @@ class ExportController extends ActionController
     ];
 
     /**
-     * StorageRepository
-     *
-     * @var \MASK\Mask\Domain\Repository\StorageRepository
-     * @inject
+     * @var array
      */
-    protected $storageRepository;
+    protected $maskConfiguration;
+
+    public function __construct(StorageRepository $storageRepository)
+    {
+        $this->maskConfiguration = (array)$storageRepository->load();
+    }
 
     /**
-     * action list
-     *
+     * @param string $vendorName
      * @param string $extensionName
+     * @param array $elements
      */
-    public function listAction($extensionName = '')
+    public function listAction($vendorName = '', $extensionName = '', $elements = [])
     {
-        $backendUser = $this->getBackendUser();
-        if (!empty($extensionName)) {
-            $backendUser->uc['mask_export']['extensionName'] = $extensionName;
-            $backendUser->writeUC();
-        } elseif (!empty($backendUser->uc['mask_export']['extensionName'])) {
-            $extensionName = $backendUser->uc['mask_export']['extensionName'];
-        } else {
-            $extensionName = $this->defaultExtensionName;
-        }
+        $extensionName = $extensionName ?: $this->getExtensionName();
+        $vendorName = $vendorName ?: $this->getVendorName();
+        $elements = $elements ?: $this->getElements();
 
-        $files = $this->getFiles($extensionName);
+        $files = $this->getFiles($vendorName, $extensionName, $elements);
 
         $this->view->assignMultiple(
             [
+                'composerMode' => Environment::isComposerMode(),
+                'vendorName' => $vendorName,
                 'extensionName' => $extensionName,
+                'availableElements' => $this->maskConfiguration['tt_content']['elements'] ?? [],
+                'includedElements' => array_combine($elements, $elements),
                 'files' => $files,
             ]
         );
     }
 
     /**
+     * @param string $vendorName
      * @param string $extensionName
+     * @param array $elements
      */
-    public function downloadAction($extensionName)
+    public function saveAction($vendorName = '', $extensionName = '', $elements = [])
     {
-        $files = $this->getFiles($extensionName);
+        if (empty($vendorName)) {
+            $vendorName = $this->getVendorName();
+        } else {
+            $vendorName = str_replace('-', '_', $vendorName);
+            if (strpos($vendorName, '_') !== false) {
+                $vendorName = GeneralUtility::underscoredToUpperCamelCase($vendorName);
+            }
+        }
+        $extensionName = $extensionName ?: $this->getExtensionName();
+
+        $backendUser = $this->getBackendUser();
+        $backendUser->uc['mask_export']['vendorName'] = $vendorName;
+        $backendUser->uc['mask_export']['extensionName'] = $extensionName;
+        $backendUser->uc['mask_export']['elements'] = implode(',', $elements);
+        $backendUser->writeUC();
+
+        $action = 'list';
+        if ($this->request->hasArgument('submit')) {
+            $submit = strtolower($this->request->getArgument('submit'));
+            if (in_array($submit, ['download', 'install'], true)) {
+                $action = $submit;
+            }
+        }
+
+        $this->forward($action, null, null, ['vendorName' => $vendorName, 'extensionName' => $extensionName, 'elements' => $elements]);
+    }
+
+    /**
+     * @param string $vendorName
+     * @param string $extensionName
+     * @param array $elements
+     */
+    public function downloadAction($vendorName, $extensionName, $elements)
+    {
+        $files = $this->getFiles($vendorName, $extensionName, $elements);
 
         $zipFile = tempnam(sys_get_temp_dir(), 'zip');
 
@@ -139,17 +175,126 @@ class ExportController extends ActionController
     }
 
     /**
+     * @param string $vendorName
      * @param string $extensionName
+     * @param array $elements
+     */
+    public function installAction($vendorName, $extensionName, $elements)
+    {
+        $paths = Extension::returnInstallPaths();
+        if (empty($paths['Local']) || !file_exists($paths['Local'])) {
+            throw new \RuntimeException('Local extension install path is missing', 1500061028);
+        }
+
+        $extensionPath = $paths['Local'] . $extensionName;
+        $files = $this->getFiles($vendorName, $extensionName, $elements);
+        $this->writeExtensionFilesToPath($files, $extensionPath);
+
+        $objectManager = GeneralUtility::makeInstance(ObjectManager::class);
+        if (!Environment::isComposerMode()) {
+            $managementService = $objectManager->get(ExtensionManagementService::class);
+            $managementService->reloadPackageInformation($extensionName);
+            $extension = $managementService->getExtension($extensionName);
+            $installInformation = $managementService->installExtension($extension);
+
+            if (is_array($installInformation)) {
+                $this->addFlashMessage(
+                    '',
+                    'Extension ' . $extensionName . ' was successfully installed',
+                    AbstractMessage::OK
+                );
+            } else {
+                $this->addFlashMessage(
+                    'An error occurred during the installation of ' . $extensionName,
+                    'Error',
+                    AbstractMessage::ERROR
+                );
+            }
+        } else {
+            $installUtility = $objectManager->get(InstallUtility::class);
+            $installUtility->reloadCaches();
+
+            $this->addFlashMessage(
+                '',
+                'Extension files of ' . $extensionName . ' were written successfully',
+                AbstractMessage::OK
+            );
+        }
+
+        $this->redirect('list');
+    }
+
+    /**
+     * @return string
+     */
+    protected function getExtensionName()
+    {
+        $extensionName = $this->defaultExtensionName;
+
+        if (!empty($this->maskConfiguration['mask_export']['extensionName'])) {
+            $extensionName = $this->maskConfiguration['mask_export']['extensionName'];
+        } else {
+            $backendUser = $this->getBackendUser();
+            if (!empty($backendUser->uc['mask_export']['extensionName'])) {
+                $extensionName = $backendUser->uc['mask_export']['extensionName'];
+            }
+        }
+
+        return $extensionName;
+    }
+
+    /**
+     * @return string
+     */
+    protected function getVendorName()
+    {
+        $vendorName = GeneralUtility::underscoredToUpperCamelCase($this->defaultExtensionName);
+
+        if (!empty($this->maskConfiguration['mask_export']['vendorName'])) {
+            $vendorName = $this->maskConfiguration['mask_export']['vendorName'];
+        } else {
+            $backendUser = $this->getBackendUser();
+            if (!empty($backendUser->uc['mask_export']['vendorName'])) {
+                $vendorName = $backendUser->uc['mask_export']['vendorName'];
+            }
+        }
+
+        return $vendorName;
+    }
+
+    /**
+     * @return string[]
+     */
+    protected function getElements()
+    {
+        $elements = [];
+
+        if (!empty($this->maskConfiguration['mask_export']['includedElements'])) {
+            $elements = $this->maskConfiguration['mask_export']['includedElements'];
+        } else {
+            $backendUser = $this->getBackendUser();
+            if (!empty($backendUser->uc['mask_export']['elements'])) {
+                $elements = explode(',', $backendUser->uc['mask_export']['elements']);
+            }
+        }
+
+        return $elements;
+    }
+
+    /**
+     * @param string $vendorName
+     * @param string $extensionName
+     * @param array $elements
      * @return array
      */
-    protected function getFiles($extensionName)
+    protected function getFiles($vendorName, $extensionName, $elements)
     {
-        $maskConfiguration = $this->storageRepository->load();
+        $aggregatedMaskConfiguration = $this->prepareConfiguration($vendorName, $extensionName, $elements);
 
         $aggregateCollection = GeneralUtility::makeInstance(
             AggregateCollection::class,
             $this->aggregateClassNames,
-            $maskConfiguration
+            $aggregatedMaskConfiguration
         )->getCollection();
 
         $files = GeneralUtility::makeInstance(
@@ -158,34 +303,140 @@ class ExportController extends ActionController
             $aggregateCollection
         )->getFiles();
 
-        $files = $this->replaceExtensionInformation($extensionName, $files);
+        $files = $this->replaceExtensionInformation($vendorName, $extensionName, $files);
         $files = $this->sortFiles($files);
 
         return $files;
     }
 
+    protected function prepareConfiguration(string $vendorName, string $extensionName, array $elements)
+    {
+        $aggregatedConfiguration = $this->maskConfiguration;
+
+        $aggregatedConfiguration['mask_export'] = [
+            'extensionName' => $extensionName,
+            'vendorName' => $vendorName,
+            'includedElements' => $elements,
+        ];
+
+        if (empty($aggregatedConfiguration['tt_content']['elements'])
+            || empty($elements)
+        ) {
+            return $aggregatedConfiguration;
+        }
+
+        // Use selected elements only
+        $aggregatedConfiguration['tt_content']['elements'] = array_intersect_key(
+            $aggregatedConfiguration['tt_content']['elements'],
+            array_flip($elements)
+        );
+
+        // Find all used fields in elements and foreign tables
+        $columns = [];
+        $closure = null;
+        $closure = function ($value) use ($aggregatedConfiguration, &$columns, &$closure) {
+            foreach (($value['columns'] ?? []) as $field) {
+                $columns[] = $field;
+                if (!empty($aggregatedConfiguration[$field]['tca'])) {
+                    array_map($closure, [['columns' => array_keys($aggregatedConfiguration[$field]['tca'])]]);
+                }
+            }
+        };
+
+        array_map($closure, $aggregatedConfiguration['tt_content']['elements']);
+
+        $columns = array_combine($columns, $columns);
+
+        // Remove unused fields from configuration
+        foreach ($aggregatedConfiguration as $table => &$configuration) {
+            if (!empty($configuration['sql'])) {
+                $configuration['sql'] = array_intersect_key(
+                    $configuration['sql'],
+                    $columns
+                );
+                if (empty($configuration['sql'])) {
+                    unset($configuration['sql']);
+                }
+            }
+
+            if (!empty($configuration['tca'])) {
+                $configuration['tca'] = array_intersect_key(
+                    $configuration['tca'],
+                    $columns
+                );
+                if (empty($configuration['tca'])) {
+                    unset($configuration['tca']);
+                }
+            }
+
+            if (empty($configuration)) {
+                unset($aggregatedConfiguration[$table]);
+            }
+        }
+
+        return $aggregatedConfiguration;
+    }
+
     /**
+     * @param array $files
+     * @param string $extensionPath
+     */
+    protected function writeExtensionFilesToPath(array $files, $extensionPath)
+    {
+        if (file_exists($extensionPath)) {
+            $finder = new Finder();
+            $finder
+                ->directories()
+                ->ignoreDotFiles(true)
+                ->ignoreVCS(true)
+                ->depth(0)
+                ->in($extensionPath);
+
+            foreach ($finder as $directory) {
+                $directoryPath = $directory->getRealPath();
+
+                if (file_exists($directoryPath)) {
+                    GeneralUtility::rmdir($directoryPath, true);
+                }
+            }
+        }
+
+        foreach ($files as $file => $content) {
+            $absoluteFile = $extensionPath . '/' . $file;
+            if (!file_exists(dirname($absoluteFile))) {
+                GeneralUtility::mkdir_deep(dirname($absoluteFile));
+            }
+            GeneralUtility::writeFile($absoluteFile, $content, true);
+        }
+    }
+
+    /**
+     * @param string $vendorName
      * @param string $extensionKey
      * @param array $files
      * @return array
      */
-    protected function replaceExtensionInformation($extensionKey, array $files)
+    protected function replaceExtensionInformation($vendorName, $extensionKey, array $files)
     {
         $newFiles = [];
         foreach ($files as $file => $fileContent) {
-            $newFiles[$this->replaceExtensionKey($extensionKey, $file)] = $this->replaceExtensionKey($extensionKey,
-                $fileContent);
+            $newFiles[$this->replaceExtensionKey($vendorName, $extensionKey, $file)] = $this->replaceExtensionKey(
+                $vendorName,
+                $extensionKey,
+                $fileContent
+            );
         }
 
         return $newFiles;
     }
 
     /**
+     * @param string $vendorName
      * @param string $extensionKey
      * @param string $string
      * @return string
      */
-    protected function replaceExtensionKey($extensionKey, $string)
+    protected function replaceExtensionKey($vendorName, $extensionKey, $string)
     {
         $camelCasedExtensionKey = GeneralUtility::underscoredToUpperCamelCase($extensionKey);
         $lowercaseExtensionKey = strtolower($camelCasedExtensionKey);
@@ -201,13 +452,13 @@ class ExportController extends ActionController
             $string
         );
         $string = preg_replace(
-            '/MASK/',
-            strtoupper($camelCasedExtensionKey),
+            '/(.)mask\\1/',
+            '\\1' . $extensionKey . '\\1',
             $string
         );
         $string = preg_replace(
-            '/(.)mask\\1/',
-            '\\1' . $extensionKey . '\\1',
+            '/MASK/',
+            $vendorName,
             $string
         );
         $string = preg_replace(
@@ -218,6 +469,21 @@ class ExportController extends ActionController
         $string = preg_replace(
             '/EXT:mask/',
             'EXT:' . $extensionKey,
+            $string
+        );
+        $string = preg_replace(
+            '/(")mask(\/)/',
+            '"' . strtolower($vendorName) . '/',
+            $string
+        );
+        $string = preg_replace(
+            '/(\/)mask(")/',
+            '/' . str_replace('_', '-', $extensionKey) . '"',
+            $string
+        );
+        $string = preg_replace(
+            '/\${(m)ask}/i',
+            '\\1ask',
             $string
         );
 

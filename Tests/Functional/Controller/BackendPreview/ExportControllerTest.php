@@ -1,39 +1,33 @@
 <?php
-namespace CPSIT\MaskExport\Tests\Functional\Controller\BackendPreview;
 
-/***************************************************************
- *  Copyright notice
+declare(strict_types=1);
+
+namespace IchHabRecht\MaskExport\Tests\Functional\Controller\BackendPreview;
+
+/*
+ * This file is part of the TYPO3 extension mask_export.
  *
- *  (c) 2017 Nicole Cordes <typo3@cordes.co>, CPS-IT GmbH
+ * (c) 2017 Nicole Cordes <typo3@cordes.co>, CPS-IT GmbH
  *
- *  All rights reserved
+ * It is free software; you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License, either version 2
+ * of the License, or any later version.
  *
- *  This script is part of the TYPO3 project. The TYPO3 project is
- *  free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  The GNU General Public License can be found at
- *  http://www.gnu.org/copyleft/gpl.html.
- *
- *  This script is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  This copyright notice MUST APPEAR in all copies of the script!
- ***************************************************************/
+ * For the full copyright and license information, please read the
+ * LICENSE file that was distributed with this source code.
+ */
 
 require_once __DIR__ . '/../AbstractExportControllerTestCase.php';
 
-use CPSIT\MaskExport\Tests\Functional\Controller\AbstractExportControllerTestCase;
+use IchHabRecht\MaskExport\Tests\Functional\Controller\AbstractExportControllerTestCase;
+use PHPUnit\Framework\MockObject\MockObject;
+use Prophecy\Argument;
+use Psr\EventDispatcher\EventDispatcherInterface;
 use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Backend\View\PageLayoutView;
 use TYPO3\CMS\Backend\View\PageLayoutViewDrawItemHookInterface;
-use TYPO3\CMS\Core\Utility\GeneralUtility;
+use TYPO3\CMS\Extbase\SignalSlot\Dispatcher;
 use TYPO3\CMS\Fluid\View\StandaloneView;
-use TYPO3\CMS\Lang\LanguageService;
 
 class ExportControllerTest extends AbstractExportControllerTestCase
 {
@@ -42,31 +36,17 @@ class ExportControllerTest extends AbstractExportControllerTestCase
      */
     public function checkFluidTemplatePathInBackendPreview()
     {
-        $this->assertArrayHasKey('Classes/Hooks/PageLayoutViewDrawItem.php', $this->files);
+        $this->assertArrayHasKey('Configuration/TsConfig/Page/BackendPreview.tsconfig', $this->files);
 
-        // Get templatePath from file
-        $matches = [];
+        // Get templatePaths from file
+        $templatePath = [];
         preg_match(
-            '#return GeneralUtility::getFileAbsFileName\\(([^)]+)\\);#',
-            $this->files['Classes/Hooks/PageLayoutViewDrawItem.php'],
-            $matches
+            '#mod\.web_layout\.tt_content\.preview\.([^.]+)\.templateRootPath = [^:]+:[^/]+/(.*)#',
+            $this->files['Configuration/TsConfig/Page/BackendPreview.tsconfig'],
+            $templatePath
         );
 
-        $this->assertCount(2, $matches);
-
-        $templateRootPath = str_replace(
-            [
-                '\'',
-                ' . ',
-                '$this->rootPath',
-            ],
-            [
-                '',
-                '',
-                'Resources/Private/Backend/',
-            ],
-            $matches[1]
-        );
+        $this->assertNotEmpty($templatePath);
 
         // Fetch supported content types from file
         $matches = [];
@@ -78,14 +58,10 @@ class ExportControllerTest extends AbstractExportControllerTestCase
 
         $this->assertCount(2, $matches);
 
-        // Get templateName from content type and check for file
         $supportedContentTypes = eval('return ' . $matches[1] . ';');
-        foreach ($supportedContentTypes as $contentType) {
-            $contentType = explode('_', $contentType, 2);
-            $templateKey = GeneralUtility::underscoredToUpperCamelCase($contentType[1]);
-            $templatePath = str_replace('$templateKey', $templateKey, $templateRootPath);
 
-            $this->assertArrayHasKey($templatePath, $this->files);
+        foreach ($supportedContentTypes as $contentType) {
+            $this->assertArrayHasKey($templatePath[2] . ucfirst($contentType) . '.html', $this->files);
         }
     }
 
@@ -94,7 +70,7 @@ class ExportControllerTest extends AbstractExportControllerTestCase
      */
     public function validateProcessedRowDataFromPageLayoutViewDrawItem()
     {
-        $className = 'MASKEXAMPLEEXPORT\MaskExampleExport\\Hooks\\PageLayoutViewDrawItem';
+        $className = 'IchHabRecht\\MaskExampleExport\\Hooks\\PageLayoutViewDrawItem';
         $this->installExtension();
 
         $this->assertTrue(class_exists($className));
@@ -107,29 +83,28 @@ class ExportControllerTest extends AbstractExportControllerTestCase
 
         // Load backend user and LanguageService for FormEngine
         $this->setUpBackendUserFromFixture(1);
-        $languageService = new LanguageService();
-        $languageService->init('default');
-        $GLOBALS['LANG'] = $languageService;
+        $GLOBALS['LANG'] = $this->getLanguageService();
 
         // Get StandaloneView mock
-        /** @var \PHPUnit_Framework_MockObject_MockObject|StandaloneView $viewMock */
+        /** @var MockObject|StandaloneView $viewMock */
         $viewMock = $this->getMockBuilder(StandaloneView::class)
-            ->setMethods(['render', 'setLayoutRootPaths', 'setPartialRootPaths', 'setTemplatePathAndFilename'])
+            ->setMethods(['render'])
             ->getMock();
         $viewMock->expects($this->once())->method('render');
-        GeneralUtility::addInstance(StandaloneView::class, $viewMock);
 
         // Call preProcess function on PageLayoutViewDrawItem
-        $pageLayoutView = new PageLayoutView();
+        $eventDispatcher = interface_exists('Psr\\EventDispatcher\\EventDispatcherInterface')
+            ? EventDispatcherInterface::class
+            : Dispatcher::class;
+        $eventDispatcher = $this->prophesize($eventDispatcher);
+        $eventDispatcher->dispatch(Argument::cetera())->willReturnArgument(0);
+        $pageLayoutView = new PageLayoutView($eventDispatcher->reveal());
         $drawItem = true;
         $headerContent = '';
         $itemContent = '';
         $row = BackendUtility::getRecord('tt_content', 1);
-        /** @var \PHPUnit_Framework_MockObject_MockObject|PageLayoutViewDrawItemHookInterface $subject */
-        $subject = $this->getMockBuilder($className)
-            ->setMethods(['getTemplatePath'])
-            ->getMock();
-        $subject->expects($this->once())->method('getTemplatePath')->willReturn(PATH_site . 'typo3conf/ext/mask_export/Resources/Private/Backend/Templates/Export/List.html');
+        /** @var MockObject|PageLayoutViewDrawItemHookInterface $subject */
+        $subject = new $className($viewMock);
         $subject->preProcess($pageLayoutView, $drawItem, $headerContent, $itemContent, $row);
 
         // Get variable container
@@ -137,11 +112,7 @@ class ExportControllerTest extends AbstractExportControllerTestCase
             return $viewMock->baseRenderingContext;
         }, null, StandaloneView::class);
         $renderingContext = $closure();
-        if (method_exists($renderingContext, 'getVariableProvider')) {
-            $variables = $renderingContext->getVariableProvider();
-        } else {
-            $variables = $renderingContext->getTemplateVariableContainer();
-        }
+        $variables = $renderingContext->getVariableProvider();
 
         $expectedArray = [
             'tx_maskexampleexport_related_content' => [

@@ -1,33 +1,25 @@
 <?php
-namespace CPSIT\MaskExport\Tests\Functional\Controller\TypoScript;
 
-/***************************************************************
- *  Copyright notice
+declare(strict_types=1);
+
+namespace IchHabRecht\MaskExport\Tests\Functional\Controller\TypoScript;
+
+/*
+ * This file is part of the TYPO3 extension mask_export.
  *
- *  (c) 2017 Nicole Cordes <typo3@cordes.co>, CPS-IT GmbH
+ * (c) 2017 Nicole Cordes <typo3@cordes.co>, CPS-IT GmbH
  *
- *  All rights reserved
+ * It is free software; you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License, either version 2
+ * of the License, or any later version.
  *
- *  This script is part of the TYPO3 project. The TYPO3 project is
- *  free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  The GNU General Public License can be found at
- *  http://www.gnu.org/copyleft/gpl.html.
- *
- *  This script is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  This copyright notice MUST APPEAR in all copies of the script!
- ***************************************************************/
+ * For the full copyright and license information, please read the
+ * LICENSE file that was distributed with this source code.
+ */
 
 require_once __DIR__ . '/../AbstractExportControllerTestCase.php';
 
-use CPSIT\MaskExport\Tests\Functional\Controller\AbstractExportControllerTestCase;
+use IchHabRecht\MaskExport\Tests\Functional\Controller\AbstractExportControllerTestCase;
 
 class ExportControllerTest extends AbstractExportControllerTestCase
 {
@@ -36,13 +28,13 @@ class ExportControllerTest extends AbstractExportControllerTestCase
      */
     public function checkFluidTemplatePathsInTypoScript()
     {
-        $this->assertArrayHasKey('Configuration/TypoScript/setup.ts', $this->files);
+        $this->assertArrayHasKey('Configuration/TypoScript/setup.typoscript', $this->files);
 
         // Fetch all templateRootPaths configurations
         $templatePaths = [];
         preg_match_all(
             '#templateRootPaths\\.0 = EXT:mask_example_export/(.+)$#m',
-            $this->files['Configuration/TypoScript/setup.ts'],
+            $this->files['Configuration/TypoScript/setup.typoscript'],
             $templatePaths,
             PREG_SET_ORDER
         );
@@ -53,7 +45,7 @@ class ExportControllerTest extends AbstractExportControllerTestCase
         $templateNames = [];
         preg_match_all(
             '#templateName = (.+)$#m',
-            $this->files['Configuration/TypoScript/setup.ts'],
+            $this->files['Configuration/TypoScript/setup.typoscript'],
             $templateNames,
             PREG_SET_ORDER
         );
@@ -73,20 +65,20 @@ class ExportControllerTest extends AbstractExportControllerTestCase
      */
     public function ensureConstantsAreInitializedInTypoScript()
     {
-        $this->assertArrayHasKey('Configuration/TypoScript/constants.ts', $this->files);
-        $this->assertArrayHasKey('Configuration/TypoScript/setup.ts', $this->files);
+        $this->assertArrayHasKey('Configuration/TypoScript/constants.typoscript', $this->files);
+        $this->assertArrayHasKey('Configuration/TypoScript/setup.typoscript', $this->files);
 
         $constants = [];
         preg_match_all(
             '#{\$([^}]+)}#',
-            $this->files['Configuration/TypoScript/setup.ts'],
+            $this->files['Configuration/TypoScript/setup.typoscript'],
             $constants
         );
 
         $this->assertNotEmpty($constants);
 
         foreach (array_unique($constants[1]) as $constant) {
-            $this->assertContains($constant, $this->files['Configuration/TypoScript/constants.ts']);
+            $this->assertContains($constant, $this->files['Configuration/TypoScript/constants.typoscript']);
         }
     }
 
@@ -95,14 +87,14 @@ class ExportControllerTest extends AbstractExportControllerTestCase
      */
     public function ensureDataProcessingWhereClauseIsBuiltCompletely()
     {
-        $this->assertArrayHasKey('Configuration/TypoScript/setup.ts', $this->files);
+        $this->assertArrayHasKey('Configuration/TypoScript/setup.typoscript', $this->files);
         $this->assertContains(
-            'where = tx_maskexampleexport_related_content_parent=###uid### AND deleted=0 AND hidden=0 AND colPos=\'999\'',
-            $this->files['Configuration/TypoScript/setup.ts']
+            'where = tx_maskexampleexport_related_content_parent=###uid### AND deleted=0 AND hidden=0 AND colPos=###colPos### AND CType IN (###CType1###, ###CType2###, ###CType3###)',
+            $this->files['Configuration/TypoScript/setup.typoscript']
         );
         $this->assertContains(
-            'where = tx_maskexampleexport_morecontent_parent=###uid### AND deleted=0 AND hidden=0 AND colPos=\'999\'',
-            $this->files['Configuration/TypoScript/setup.ts']
+            'where = tx_maskexampleexport_morecontent_parent=###uid### AND deleted=0 AND hidden=0 AND colPos=###colPos###',
+            $this->files['Configuration/TypoScript/setup.typoscript']
         );
     }
 }

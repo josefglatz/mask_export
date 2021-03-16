@@ -1,31 +1,26 @@
 <?php
-namespace CPSIT\MaskExport\FileCollection;
 
-/***************************************************************
- *  Copyright notice
- *
- *  (c) 2016 Nicole Cordes <typo3@cordes.co>, CPS-IT GmbH
- *
- *  All rights reserved
- *
- *  This script is part of the TYPO3 project. The TYPO3 project is
- *  free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  The GNU General Public License can be found at
- *  http://www.gnu.org/copyleft/gpl.html.
- *
- *  This script is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  This copyright notice MUST APPEAR in all copies of the script!
- ***************************************************************/
+declare(strict_types=1);
 
-use CPSIT\MaskExport\Aggregate\SqlAwareInterface;
+namespace IchHabRecht\MaskExport\FileCollection;
+
+/*
+ * This file is part of the TYPO3 extension mask_export.
+ *
+ * (c) 2016 Nicole Cordes <typo3@cordes.co>, CPS-IT GmbH
+ *
+ * It is free software; you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License, either version 2
+ * of the License, or any later version.
+ *
+ * For the full copyright and license information, please read the
+ * LICENSE file that was distributed with this source code.
+ */
+
+use Doctrine\DBAL\Schema\Table;
+use IchHabRecht\MaskExport\Aggregate\SqlAwareInterface;
+use TYPO3\CMS\Core\Database\Schema\DefaultTcaSchema;
+use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 class SqlFileCollection extends AbstractFileCollection
 {
@@ -33,6 +28,18 @@ class SqlFileCollection extends AbstractFileCollection
      * @var string
      */
     protected $fileIdentifier = 'ext_tables.sql';
+
+    /**
+     * @var DefaultTcaSchema
+     */
+    protected $defaultSchema;
+
+    public function __construct(array $aggregateCollection, DefaultTcaSchema $defaultSchema = null)
+    {
+        parent::__construct($aggregateCollection);
+
+        $this->defaultSchema = $defaultSchema ?: GeneralUtility::makeInstance(DefaultTcaSchema::class);
+    }
 
     /**
      * @return array
@@ -56,10 +63,22 @@ class SqlFileCollection extends AbstractFileCollection
         ksort($sqlDefinitions);
         $files[$this->fileIdentifier] = '';
         foreach ($sqlDefinitions as $table => $fields) {
-            array_walk($fields, function (&$definition, $field) {
+            $schemaTable = new Table($table);
+            $schema = $this->defaultSchema->enrich([$schemaTable])[0];
+
+            $schemaColumns = $schema->getColumns();
+            $schemaIndexes = $schema->getIndexes();
+
+            $aggregatedFields = array_diff_key($fields, $schemaColumns);
+            unset($aggregatedFields['PRIMARY KEY']);
+            foreach (array_keys($schemaIndexes) as $index) {
+                unset($aggregatedFields['KEY ' . $index]);
+            }
+
+            array_walk($aggregatedFields, function (&$definition, $field) {
                 $definition = sprintf('    %s %s', $field, $definition);
             });
-            $fieldDefinitions = implode(',' . PHP_EOL, $fields);
+            $fieldDefinitions = implode(',' . PHP_EOL, $aggregatedFields);
             $files[$this->fileIdentifier] .=
 <<<EOS
 CREATE TABLE {$table} (
